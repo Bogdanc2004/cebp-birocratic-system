@@ -1,0 +1,26 @@
+{
+  "offices": [
+    { "name": "Evidenta Populatiei", "counters": 2, "issues": ["CertificatNastere", "CarteIdentitate"] },
+    { "name": "Primarie",            "counters": 3, "issues": ["AdeverintaDomiciliu", "CertificatUrbanism"] },
+    { "name": "ANAF",                "counters": 1, "issues": ["CertificatFiscal"] },
+    { "name": "Cadastru",            "counters": 2, "issues": ["ExtrasCarteFunciara"] },
+    { "name": "Notariat",            "counters": 1, "issues": ["ContractVanzare"] }
+  ],
+  "documents": [
+    { "name": "CertificatNastere",   "requires": [] },
+    { "name": "AdeverintaDomiciliu", "requires": ["CertificatNastere"] },
+    { "name": "CarteIdentitate",     "requires": ["CertificatNastere", "AdeverintaDomiciliu"] },
+    { "name": "CertificatFiscal",    "requires": ["CarteIdentitate"] },
+    { "name": "ExtrasCarteFunciara", "requires": ["CarteIdentitate"] },
+    { "name": "CertificatUrbanism",  "requires": ["ExtrasCarteFunciara"] },
+    { "name": "ContractVanzare",     "requires": ["CertificatFiscal", "ExtrasCarteFunciara", "CertificatUrbanism"] }
+  ],
+  "simulation": {
+    "clients": 200,
+    "serviceTimeMs": { "min": 20, "max": 80 },
+    "coffeeBreakMs": { "min": 200, "max": 600 },
+    "coffeeBreakChance": 0.1,
+    "timeoutSeconds": 120,
+    "seed": null
+  }
+}
