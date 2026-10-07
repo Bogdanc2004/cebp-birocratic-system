@@ -1,0 +1,19 @@
+{
+  "offices": [
+    { "name": "Evidenta Populatiei", "counters": 2, "issues": ["CertificatNastere", "CarteIdentitate"] },
+    { "name": "Primarie",            "counters": 2, "issues": ["AdeverintaDomiciliu"] }
+  ],
+  "documents": [
+    { "name": "CertificatNastere",   "requires": [] },
+    { "name": "AdeverintaDomiciliu", "requires": ["CertificatNastere"] },
+    { "name": "CarteIdentitate",     "requires": ["CertificatNastere", "AdeverintaDomiciliu"] }
+  ],
+  "simulation": {
+    "clients": 20,
+    "serviceTimeMs": { "min": 10, "max": 30 },
+    "coffeeBreakMs": { "min": 50, "max": 150 },
+    "coffeeBreakChance": 0.1,
+    "timeoutSeconds": 30,
+    "seed": 42
+  }
+}
