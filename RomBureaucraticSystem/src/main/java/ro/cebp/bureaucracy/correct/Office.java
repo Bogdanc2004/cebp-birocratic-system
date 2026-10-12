@@ -5,47 +5,68 @@ import ro.cebp.bureaucracy.common.Statistics;
 import ro.cebp.bureaucracy.common.model.OfficeConfig;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
 
-/**
- * OWNER: M2 (Queues &amp; Counters). STUB: only the agreed signatures, no logic.
- *
- * <p>Expected behavior:
- * <ul>
- *   <li>one {@code BlockingQueue<Request>} shared by {@code config.counters()} counter threads;</li>
- *   <li>a counter takes a request, works for {@code simulation.serviceTimeMs().random()} ms,
- *       checks that {@code presented} contains every required document, creates a
- *       {@code Document} with a globally unique serial number, then calls
- *       {@code ledger.record(doc)}, {@code stats.recordIssued(name())} and
- *       {@code request.result().complete(doc)};</li>
- *   <li>{@link #shutdown()} stops all counters (poison pill) and waits for them to end.</li>
- * </ul>
- * M3 needs a way to close and reopen counters for coffee breaks. Agree on it with M2.
- */
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
+
+// Manages a single bureaucratic office, its shared request queue, and counter threads.
 public final class Office {
 
     private final OfficeConfig config;
+    private final BlockingQueue<Request> queue = new LinkedBlockingQueue<>();
+    private final List<Counter> counters;
+    private final List<Thread> threads;
 
     public Office(OfficeConfig config, SimulationConfig simulation, Statistics stats, IssuedLedger ledger) {
         this.config = config;
-        // TODO M2
+        List<Counter> counterList = new ArrayList<>();
+        List<Thread> threadList = new ArrayList<>();
+        for (int i = 1; i <= config.counters(); i++) {
+            Counter counter = new Counter(i, config.name(), queue, simulation, stats, ledger);
+            counterList.add(counter);
+            Thread thread = new Thread(counter, config.name() + "-counter-" + i);
+            threadList.add(thread);
+        }
+        this.counters = List.copyOf(counterList);
+        this.threads = List.copyOf(threadList);
     }
 
     public String name() {
         return config.name();
     }
 
-    /** Starts the counter threads. */
+    // Exposes counters for coffee break coordination.
+    public List<Counter> counters() {
+        return counters;
+    }
+
+    // Starts all counter worker threads.
     public void start() {
-        throw new UnsupportedOperationException("TODO M2: Office.start");
+        for (Thread thread : threads) {
+            thread.start();
+        }
     }
 
-    /** Puts a request in this office's queue. Called by client threads. */
+    // Submits a client request into the office queue.
     public void submit(Request request) {
-        throw new UnsupportedOperationException("TODO M2: Office.submit");
+        try {
+            queue.put(request);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted while submitting request to " + config.name(), e);
+        }
     }
 
-    /** Stops the counters and waits for them to terminate. */
+    // Sends poison pills to counters and waits for all threads to terminate.
     public void shutdown() throws InterruptedException {
-        throw new UnsupportedOperationException("TODO M2: Office.shutdown");
+        for (int i = 0; i < counters.size(); i++) {
+            queue.put(new Request(0, null, List.of(), new CompletableFuture<>()));
+        }
+        for (Thread thread : threads) {
+            thread.join();
+        }
     }
 
     // Helper to identify poison pill requests.
