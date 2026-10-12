@@ -47,4 +47,9 @@ public final class Office {
     public void shutdown() throws InterruptedException {
         throw new UnsupportedOperationException("TODO M2: Office.shutdown");
     }
+
+    // Helper to identify poison pill requests.
+    static boolean isPoisonPill(Request request) {
+        return request.wanted() == null;
+    }
 }
