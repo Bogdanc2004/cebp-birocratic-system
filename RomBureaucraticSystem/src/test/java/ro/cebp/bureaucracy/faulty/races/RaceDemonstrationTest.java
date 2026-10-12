@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import ro.cebp.bureaucracy.common.StatisticsSnapshot;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -66,5 +67,30 @@ class RaceDemonstrationTest {
         OfficeRegistry.reset();
 
         assertTrue(instances.size() > 1, "expected several registries [R6], got " + instances.size());
+    }
+
+    @Test
+    void unsafeCounterProducesDuplicateSerialNumbers() throws InterruptedException {
+        Counter.resetSerial();
+        Set<Long> serials = Collections.synchronizedSet(new HashSet<>());
+        int perThread = 10;
+        CountDownLatch go = new CountDownLatch(1);
+
+        try (ExecutorService pool = Executors.newFixedThreadPool(THREADS)) {
+            for (int t = 0; t < THREADS; t++) {
+                pool.submit(() -> {
+                    go.await();
+                    for (int i = 0; i < perThread; i++) {
+                        serials.add(Counter.generateSerial());
+                    }
+                    return null;
+                });
+            }
+            go.countDown();
+        }
+
+        int totalExpected = THREADS * perThread;
+        // With concurrent read-modify-write on nextSerial, duplicate serials occur.
+        assertTrue(serials.size() < totalExpected, "expected duplicate serial numbers [R3], got " + serials.size());
     }
 }
