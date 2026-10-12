@@ -11,10 +11,7 @@ import ro.cebp.bureaucracy.common.StatisticsSnapshot;
 import ro.cebp.bureaucracy.common.model.DocumentType;
 import ro.cebp.bureaucracy.common.model.OfficeConfig;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
-// TODO: switch these to the faulty/races copies once M2-M4 have written them.
-import ro.cebp.bureaucracy.correct.Client;
-import ro.cebp.bureaucracy.correct.CoffeeBreakScheduler;
-import ro.cebp.bureaucracy.correct.Office;
+
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -46,6 +43,7 @@ public final class RacesSimulation {
     }
 
     public SimulationResult run() throws InterruptedException {
+        Counter.resetSerial();
         SimulationConfig sim = bureaucracy.simulation();
         IssuedLedger ledger = new IssuedLedger();
 
