@@ -8,36 +8,49 @@ import ro.cebp.bureaucracy.common.model.DocumentType;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
 import ro.cebp.bureaucracy.correct.Request;
 
-import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.BlockingDeque;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-// FAULTY Counter worker implementing BUG P2 (busy waiting, sleep under lock) and BUG L2 (lost wakeup).
+/**
+ * FAULTY Counter. Its bugs are switched on one by one with {@link LockBug}:
+ * <ul>
+ *   <li>BUG [P2] {@link LockBug#BUSY_WAIT}: spins while the queue is empty;</li>
+ *   <li>BUG [P2] {@link LockBug#BREAK_HOLDING_ARCHIVE}: keeps the archive lock for the whole break;</li>
+ *   <li>BUG [L2] {@link LockBug#LOST_WAKEUP}: can miss the "back from break" signal and sleep forever.</li>
+ * </ul>
+ * With no bug enabled it behaves correctly.
+ */
 public final class Counter implements Runnable {
 
     private static final AtomicLong SERIAL_GENERATOR = new AtomicLong(1);
+    // How long a counter blocks for the next client before re-checking breaks and the stop flag.
+    private static final long POLL_MS = 20;
 
     private final int id;
     private final String officeName;
-    private final Queue<Request> queue;
+    private final BlockingDeque<Request> queue;
     private final Object archiveLock;
     private final SimulationConfig simulation;
     private final Statistics stats;
     private final IssuedLedger ledger;
+    private final Set<LockBug> bugs;
 
     private final AtomicBoolean onBreak = new AtomicBoolean(false);
     private final Object pauseLock = new Object();
     private volatile boolean running = true;
 
-    public Counter(int id,
-                   String officeName,
-                   Queue<Request> queue,
-                   Object archiveLock,
-                   SimulationConfig simulation,
-                   Statistics stats,
-                   IssuedLedger ledger) {
+    Counter(int id,
+            String officeName,
+            BlockingDeque<Request> queue,
+            Object archiveLock,
+            SimulationConfig simulation,
+            Statistics stats,
+            IssuedLedger ledger,
+            Set<LockBug> bugs) {
         this.id = id;
         this.officeName = officeName;
         this.queue = queue;
@@ -45,6 +58,7 @@ public final class Counter implements Runnable {
         this.simulation = simulation;
         this.stats = stats;
         this.ledger = ledger;
+        this.bugs = bugs;
     }
 
     public int id() {
@@ -55,23 +69,27 @@ public final class Counter implements Runnable {
         return onBreak.get();
     }
 
-    // Sends counter on break.
-    public void sendOnBreak() {
-        onBreak.set(true);
+    boolean goOnBreak() {
+        if (!onBreak.compareAndSet(false, true)) {
+            return false;
+        }
         Log.info("[%s-Counter-%d] Going on coffee break", officeName, id);
+        return true;
     }
 
-    // BUG [L2]: notify() instead of notifyAll() causes lost wakeup when multiple threads wait.
-    public void resumeFromBreak() {
+    boolean returnFromBreak() {
         synchronized (pauseLock) {
-            onBreak.set(false);
-            // BUG [L2]: Single notification can be lost or wake wrong thread.
-            pauseLock.notify();
+            if (!onBreak.compareAndSet(true, false)) {
+                return false;
+            }
+            // notifyAll() vs notify() is NOT the L2 bug: only this counter ever waits on pauseLock.
+            // The bug is that this signal may be sent before the counter starts waiting (see lostWakeupBreak).
+            pauseLock.notifyAll();
         }
         Log.info("[%s-Counter-%d] Returned from coffee break", officeName, id);
+        return true;
     }
 
-    // Stops worker loop.
     public void stop() {
         running = false;
     }
@@ -80,27 +98,20 @@ public final class Counter implements Runnable {
     public void run() {
         try {
             while (running) {
-                checkBreak();
+                handleBreak();
 
-                // BUG [P2]: Busy-waiting while queue is empty burns 100% CPU instead of blocking.
-                while (queue.isEmpty() && running) {
-                    Thread.onSpinWait();
-                }
-
-                if (!running) {
-                    break;
-                }
-
-                Request request = queue.poll();
+                Request request = nextRequest();
                 if (request == null) {
-                    continue;
+                    continue; // nothing yet, a break started, or we are stopping
                 }
-
                 if (Office.isPoisonPill(request)) {
                     break;
                 }
-
-                checkBreak();
+                if (onBreak.get()) {
+                    // Sent on break while waiting for a client: give the client back (as in the correct version).
+                    queue.putFirst(request);
+                    continue;
+                }
                 serve(request);
             }
         } catch (InterruptedException e) {
@@ -108,51 +119,92 @@ public final class Counter implements Runnable {
         }
     }
 
-    // BUG [L2]: wait() inside if instead of while loop leads to missed signals.
-    private void checkBreak() throws InterruptedException {
-        if (onBreak.get()) {
-            // BUG [P2]: Holding archive lock during coffee break blocks other counters in office.
+    private Request nextRequest() throws InterruptedException {
+        if (bugs.contains(LockBug.BUSY_WAIT)) {
+            // BUG [P2]: busy waiting. The thread never blocks: it keeps a CPU core at 100% asking
+            // "anyone there?" while the queue is empty.
+            while (queue.isEmpty() && running && !onBreak.get()) {
+                Thread.onSpinWait();
+            }
+            return queue.poll();
+        }
+        // Correct: block until a client arrives (with a short timeout, to notice breaks and stop).
+        return queue.poll(POLL_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void handleBreak() throws InterruptedException {
+        if (!onBreak.get()) {
+            return;
+        }
+        if (bugs.contains(LockBug.LOST_WAKEUP)) {
+            lostWakeupBreak();
+        } else if (bugs.contains(LockBug.BREAK_HOLDING_ARCHIVE)) {
+            // BUG [P2]: the whole break is spent holding the archive lock. wait() releases only
+            // pauseLock, NOT archiveLock, so every other counter of the office blocks in serve().
             synchronized (archiveLock) {
-                synchronized (pauseLock) {
-                    // BUG [L2]: Uses if instead of while loop before wait().
-                    if (onBreak.get()) {
-                        int breakMs = simulation.coffeeBreakMs().random();
-                        Thread.sleep(breakMs);
-                        pauseLock.wait(50);
-                    }
-                }
+                waitWhileOnBreak();
+            }
+        } else {
+            waitWhileOnBreak();
+        }
+    }
+
+    // Correct way to wait: the condition is checked and waited on under the same lock, in a loop.
+    private void waitWhileOnBreak() throws InterruptedException {
+        synchronized (pauseLock) {
+            while (onBreak.get()) {
+                pauseLock.wait();
             }
         }
     }
 
+    /**
+     * BUG [L2] â€” lost wakeup. The counter decided it is on break (the check in handleBreak, made
+     * without holding pauseLock), then drinks its coffee, and only then waits for the signal.
+     * If the supervisor ends the break during the coffee, returnFromBreak() notifies while
+     * nobody is waiting yet, so the signal is lost. The counter then waits with no timeout and
+     * without re-checking {@code onBreak}, which is already false: it sleeps forever.
+     * The office counts it as open, but it never serves anyone again.
+     *
+     * <p>Fix: check the condition and wait under the same lock, in a loop
+     * ({@link #waitWhileOnBreak()}).
+     */
+    private void lostWakeupBreak() throws InterruptedException {
+        Thread.sleep(simulation.coffeeBreakMs().max()); // the coffee: the reopen signal usually arrives now
+        synchronized (pauseLock) {
+            pauseLock.wait(); // BUG [L2]: no while (onBreak) loop and no timeout
+        }
+    }
+
     private void serve(Request request) throws InterruptedException {
-        // Shared archive lock acquired to serve request.
+        int serviceMs = simulation.serviceTimeMs().random();
+        if (serviceMs > 0) {
+            Thread.sleep(serviceMs);
+        }
+
+        DocumentType wanted = request.wanted();
+        Set<String> presentedTypes = request.presented().stream()
+                .map(d -> d.type().name())
+                .collect(Collectors.toSet());
+
+        for (String req : wanted.requires()) {
+            if (!presentedTypes.contains(req)) {
+                IllegalStateException error = new IllegalStateException(
+                        String.format("Client %d missing prerequisite %s for %s at office %s",
+                                request.clientId(), req, wanted.name(), officeName));
+                request.result().completeExceptionally(error);
+                return;
+            }
+        }
+
+        Document doc;
+        // Short critical section: filing the document in the office archive.
         synchronized (archiveLock) {
-            int serviceMs = simulation.serviceTimeMs().random();
-            if (serviceMs > 0) {
-                Thread.sleep(serviceMs);
-            }
-
-            DocumentType wanted = request.wanted();
-            Set<String> presentedTypes = request.presented().stream()
-                    .map(d -> d.type().name())
-                    .collect(Collectors.toSet());
-
-            for (String req : wanted.requires()) {
-                if (!presentedTypes.contains(req)) {
-                    IllegalStateException error = new IllegalStateException(
-                            String.format("Client %d missing prerequisite %s for %s at office %s",
-                                    request.clientId(), req, wanted.name(), officeName));
-                    request.result().completeExceptionally(error);
-                    return;
-                }
-            }
-
             long serial = SERIAL_GENERATOR.getAndIncrement();
-            Document doc = new Document(wanted, request.clientId(), serial);
+            doc = new Document(wanted, request.clientId(), serial);
             ledger.record(doc);
             stats.recordIssued(officeName);
-            request.result().complete(doc);
         }
+        request.result().complete(doc);
     }
 }

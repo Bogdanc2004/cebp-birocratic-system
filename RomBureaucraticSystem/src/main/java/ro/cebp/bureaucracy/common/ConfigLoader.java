@@ -6,6 +6,7 @@ import ro.cebp.bureaucracy.common.model.DocumentConfig;
 import ro.cebp.bureaucracy.common.model.DocumentType;
 import ro.cebp.bureaucracy.common.model.OfficeConfig;
 import ro.cebp.bureaucracy.common.model.Range;
+import ro.cebp.bureaucracy.common.model.ResourceConfig;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
 
 import java.io.IOException;
@@ -89,6 +90,17 @@ public final class ConfigLoader {
             }
         }
 
+        Set<String> resourceNames = new HashSet<>();
+        for (ResourceConfig resource : config.resources()) {
+            requireName(resource.name(), "resource");
+            if (!resourceNames.add(resource.name())) {
+                throw new ConfigException("Duplicate resource: " + resource.name());
+            }
+            if (resource.permits() < 1) {
+                throw new ConfigException("Resource '" + resource.name() + "' must have at least one permit");
+            }
+        }
+
         Map<String, DocumentType> documents = new HashMap<>();
         for (DocumentConfig doc : config.documents()) {
             requireName(doc.name(), "document");
@@ -96,7 +108,16 @@ public final class ConfigLoader {
             if (office == null) {
                 throw new ConfigException("No office issues document '" + doc.name() + "'");
             }
-            if (documents.put(doc.name(), new DocumentType(doc.name(), office, doc.requires())) != null) {
+            Set<String> used = new HashSet<>();
+            for (String resource : doc.uses()) {
+                if (!resourceNames.contains(resource)) {
+                    throw new ConfigException("Document '" + doc.name() + "' uses unknown resource '" + resource + "'");
+                }
+                if (!used.add(resource)) {
+                    throw new ConfigException("Document '" + doc.name() + "' lists resource '" + resource + "' twice");
+                }
+            }
+            if (documents.put(doc.name(), new DocumentType(doc.name(), office, doc.requires(), doc.uses())) != null) {
                 throw new ConfigException("Duplicate document: " + doc.name());
             }
         }
@@ -109,7 +130,7 @@ public final class ConfigLoader {
 
         // Detects unknown requirements and dependency cycles.
         DependencyGraph graph = new DependencyGraph(documents);
-        return new Bureaucracy(config.offices(), documents, graph, config.simulation());
+        return new Bureaucracy(config.offices(), documents, config.resources(), graph, config.simulation());
     }
 
     private static void validateSimulation(SimulationConfig sim) {

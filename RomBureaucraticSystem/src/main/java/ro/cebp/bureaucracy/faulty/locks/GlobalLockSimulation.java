@@ -12,7 +12,10 @@ import ro.cebp.bureaucracy.common.StatisticsSnapshot;
 import ro.cebp.bureaucracy.common.model.DocumentType;
 import ro.cebp.bureaucracy.common.model.OfficeConfig;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
-
+// P1 is measured on its own: everything except the global lock is the correct code.
+import ro.cebp.bureaucracy.correct.Client;
+import ro.cebp.bureaucracy.correct.CoffeeBreakScheduler;
+import ro.cebp.bureaucracy.correct.Office;
 
 import java.time.Duration;
 import java.util.ArrayList;

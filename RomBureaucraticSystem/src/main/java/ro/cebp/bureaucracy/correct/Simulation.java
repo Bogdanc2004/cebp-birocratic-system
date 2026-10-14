@@ -104,7 +104,10 @@ public final class Simulation {
         Log.info("All offices closed");
 
         StatisticsSnapshot snapshot = stats.snapshot();
-        List<String> violations = InvariantChecker.check(plans, ledger.documents(), snapshot);
+        List<String> violations = new ArrayList<>(InvariantChecker.check(plans, ledger.documents(), snapshot));
+        Map<String, Integer> minOpen = new HashMap<>();
+        offices.forEach(office -> minOpen.put(office.name(), office.minOpenCounters()));
+        violations.addAll(InvariantChecker.checkOffices(minOpen));
         return new SimulationResult(snapshot, violations, elapsed, finishedInTime);
     }
 }

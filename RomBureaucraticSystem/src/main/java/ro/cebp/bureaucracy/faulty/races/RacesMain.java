@@ -13,6 +13,8 @@ import ro.cebp.bureaucracy.common.SimulationResult;
  */
 public final class RacesMain {
 
+    static final String DEFAULT_CONFIG = "config/races.json";
+
     private RacesMain() {
     }
 
@@ -21,7 +23,9 @@ public final class RacesMain {
         // With several runs, the event log would be unreadable: keep only the summaries.
         Log.setEnabled(!cli.quiet() && cli.runs() == 1);
 
-        Bureaucracy bureaucracy = ConfigLoader.load(cli.config());
+        // races.json has a short timeout: clients lost by R1 would otherwise make every failed run very long.
+        Bureaucracy bureaucracy = ConfigLoader.load(
+                cli.config().equals(CommandLine.DEFAULT_CONFIG) ? DEFAULT_CONFIG : cli.config());
         int failed = 0;
         for (int run = 1; run <= cli.runs(); run++) {
             OfficeRegistry.reset();

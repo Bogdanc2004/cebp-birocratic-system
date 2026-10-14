@@ -57,19 +57,30 @@ public final class Counter implements Runnable {
         return onBreak.get();
     }
 
-    // Sends counter on coffee break.
-    public void sendOnBreak() {
-        onBreak.set(true);
+    // Sends counter on coffee break (same as the correct version). Only Office.startBreak calls it.
+    boolean goOnBreak() {
+        if (!onBreak.compareAndSet(false, true)) {
+            return false;
+        }
         Log.info("[%s-Counter-%d] Going on coffee break", officeName, id);
+        return true;
     }
 
-    // Resumes counter from coffee break.
-    public void resumeFromBreak() {
+    // Resumes counter from coffee break (same as the correct version). Only Office.endBreak calls it.
+    boolean returnFromBreak() {
         synchronized (pauseLock) {
-            onBreak.set(false);
+            if (!onBreak.compareAndSet(true, false)) {
+                return false;
+            }
             pauseLock.notifyAll();
         }
         Log.info("[%s-Counter-%d] Returned from coffee break", officeName, id);
+        return true;
+    }
+
+    // Stops the worker loop. Safety net for shutdown: the R1 race can lose or swallow the poison pills.
+    public void stop() {
+        running = false;
     }
 
     @Override
