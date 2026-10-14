@@ -72,6 +72,11 @@ public final class Counter implements Runnable {
         Log.info("[%s-Counter-%d] Returned from coffee break", officeName, id);
     }
 
+    // Stops the worker loop. Safety net for shutdown: the R1 race can lose or swallow the poison pills.
+    public void stop() {
+        running = false;
+    }
+
     @Override
     public void run() {
         try {

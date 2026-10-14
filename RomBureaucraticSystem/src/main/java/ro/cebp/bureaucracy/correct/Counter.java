@@ -8,8 +8,9 @@ import ro.cebp.bureaucracy.common.model.DocumentType;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
 
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
@@ -21,18 +22,20 @@ public final class Counter implements Runnable {
 
     private final int id;
     private final String officeName;
-    private final BlockingQueue<Request> queue;
+    private final BlockingDeque<Request> queue;
     private final SimulationConfig simulation;
     private final Statistics stats;
     private final IssuedLedger ledger;
 
+    // Coffee-break gate. The flag is atomic so it can be read without the lock;
+    // waiting and waking up happen on pauseLock.
     private final AtomicBoolean onBreak = new AtomicBoolean(false);
     private final Object pauseLock = new Object();
-    private volatile boolean running = true;
+    private final AtomicInteger served = new AtomicInteger();
 
     public Counter(int id,
                    String officeName,
-                   BlockingQueue<Request> queue,
+                   BlockingDeque<Request> queue,
                    SimulationConfig simulation,
                    Statistics stats,
                    IssuedLedger ledger) {
@@ -52,27 +55,40 @@ public final class Counter implements Runnable {
         return onBreak.get();
     }
 
-    // Sends counter on coffee break.
-    public void sendOnBreak() {
-        onBreak.set(true);
-        Log.info("[%s-Counter-%d] Going on coffee break", officeName, id);
+    /** Number of requests this counter has served. */
+    public int served() {
+        return served.get();
     }
 
-    // Resumes counter from coffee break.
-    public void resumeFromBreak() {
+    /** Marks the counter as on break. Only {@link Office#startBreak} calls it. Returns false if already on break. */
+    boolean goOnBreak() {
+        if (!onBreak.compareAndSet(false, true)) {
+            return false;
+        }
+        Log.info("[%s-Counter-%d] Going on coffee break", officeName, id);
+        return true;
+    }
+
+    /** Reopens the counter and wakes it. Only {@link Office#endBreak} calls it. Returns false if it was not on break. */
+    boolean returnFromBreak() {
         synchronized (pauseLock) {
-            onBreak.set(false);
+            // The flag changes under the same lock the counter waits on, so the wake-up cannot
+            // slip in between the counter's check and its wait().
+            if (!onBreak.compareAndSet(true, false)) {
+                return false;
+            }
             pauseLock.notifyAll();
         }
         Log.info("[%s-Counter-%d] Returned from coffee break", officeName, id);
+        return true;
     }
 
     @Override
     public void run() {
         try {
-            while (running) {
-                // Check coffee break state before polling queue.
-                checkBreak();
+            while (true) {
+                // The gate is checked BEFORE calling the next client, never between calling and serving.
+                waitWhileOnBreak();
 
                 Request request = queue.take();
 
@@ -81,8 +97,12 @@ public final class Counter implements Runnable {
                     break;
                 }
 
-                // Re-check coffee break state after receiving request.
-                checkBreak();
+                // Sent on break while waiting in take(): hand the client back to the front of the
+                // queue, so an open counter of the office serves them next. Nobody is lost.
+                if (onBreak.get()) {
+                    queue.putFirst(request);
+                    continue;
+                }
 
                 serve(request);
             }
@@ -91,12 +111,12 @@ public final class Counter implements Runnable {
         }
     }
 
-    private void checkBreak() throws InterruptedException {
-        if (onBreak.get()) {
-            synchronized (pauseLock) {
-                while (onBreak.get()) {
-                    pauseLock.wait();
-                }
+    private void waitWhileOnBreak() throws InterruptedException {
+        synchronized (pauseLock) {
+            // while, not if: after waking up, check the condition again (spurious wake-ups, or
+            // being woken for a break that started again).
+            while (onBreak.get()) {
+                pauseLock.wait();
             }
         }
     }
@@ -131,6 +151,7 @@ public final class Counter implements Runnable {
         // Record to ledger, update statistics and complete client future.
         ledger.record(doc);
         stats.recordIssued(officeName);
+        served.incrementAndGet();
         request.result().complete(doc);
     }
 }

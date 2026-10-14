@@ -100,4 +100,19 @@ public final class InvariantChecker {
 
         return violations;
     }
+
+    /**
+     * Coffee-break rule: an office must never have had all its counters closed.
+     *
+     * @param minOpenCounters office name -> lowest number of open counters reached during the run
+     */
+    public static List<String> checkOffices(Map<String, Integer> minOpenCounters) {
+        List<String> violations = new ArrayList<>();
+        new TreeMap<>(minOpenCounters).forEach((office, min) -> {
+            if (min < 1) {
+                violations.add("Office '" + office + "' had " + min + " open counters at some point");
+            }
+        });
+        return violations;
+    }
 }
