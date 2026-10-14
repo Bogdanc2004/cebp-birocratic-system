@@ -2,6 +2,7 @@ package ro.cebp.bureaucracy.common;
 
 import ro.cebp.bureaucracy.common.model.DocumentType;
 import ro.cebp.bureaucracy.common.model.OfficeConfig;
+import ro.cebp.bureaucracy.common.model.ResourceConfig;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
 
 import java.util.List;
@@ -12,15 +13,18 @@ import java.util.Map;
  * Immutable, so it is shared freely between threads.
  *
  * @param documents document name -> resolved document type
+ * @param resources shared resources, in the institution's global acquisition order (may be empty)
  */
 public record Bureaucracy(
         List<OfficeConfig> offices,
         Map<String, DocumentType> documents,
+        List<ResourceConfig> resources,
         DependencyGraph graph,
         SimulationConfig simulation) {
 
     public Bureaucracy {
         offices = List.copyOf(offices);
         documents = Map.copyOf(documents);
+        resources = List.copyOf(resources);
     }
 }

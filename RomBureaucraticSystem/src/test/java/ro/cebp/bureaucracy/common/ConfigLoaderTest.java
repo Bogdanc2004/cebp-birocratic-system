@@ -5,6 +5,7 @@ import ro.cebp.bureaucracy.common.model.BureaucracyConfig;
 import ro.cebp.bureaucracy.common.model.DocumentConfig;
 import ro.cebp.bureaucracy.common.model.OfficeConfig;
 import ro.cebp.bureaucracy.common.model.Range;
+import ro.cebp.bureaucracy.common.model.ResourceConfig;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
 
 import java.util.List;
@@ -36,6 +37,8 @@ class ConfigLoaderTest {
     void shippedConfigsAreValid() {
         ConfigLoader.load("config/small.json");
         ConfigLoader.load("config/benchmark.json");
+        ConfigLoader.load("config/races.json");
+        ConfigLoader.load("config/shared-resources.json");
     }
 
     @Test
@@ -81,6 +84,37 @@ class ConfigLoaderTest {
         assertInvalid(new BureaucracyConfig(
                 List.of(new OfficeConfig("P", 1, List.of("A", "Ghost"))),
                 List.of(new DocumentConfig("A", null)), SIM), "undeclared document 'Ghost'");
+    }
+
+    @Test
+    void sharedResourcesConfigLoads() {
+        Bureaucracy b = ConfigLoader.load("config/shared-resources.json");
+        assertEquals(List.of(new ResourceConfig("Registru", 1), new ResourceConfig("Stampila", 1)), b.resources());
+        // The two offices list the resources in opposite orders on purpose (deadlock/livelock setting).
+        assertEquals(List.of("Registru", "Stampila"), b.documents().get("AdeverintaDomiciliu").uses());
+        assertEquals(List.of("Stampila", "Registru"), b.documents().get("CertificatFiscal").uses());
+    }
+
+    @Test
+    void configWithoutResourcesHasNone() {
+        Bureaucracy b = ConfigLoader.load("config/default.json");
+        assertTrue(b.resources().isEmpty());
+        assertTrue(b.documents().values().stream().allMatch(d -> d.uses().isEmpty()));
+    }
+
+    @Test
+    void invalidResourcesAreRejected() {
+        List<OfficeConfig> offices = List.of(new OfficeConfig("P", 1, List.of("A")));
+        ResourceConfig stamp = new ResourceConfig("Stampila", 1);
+
+        assertInvalid(new BureaucracyConfig(offices,
+                List.of(new DocumentConfig("A", null, List.of("Ghost"))), List.of(stamp), SIM), "unknown resource 'Ghost'");
+        assertInvalid(new BureaucracyConfig(offices,
+                List.of(new DocumentConfig("A", null, List.of("Stampila", "Stampila"))), List.of(stamp), SIM), "twice");
+        assertInvalid(new BureaucracyConfig(offices,
+                List.of(new DocumentConfig("A", null)), List.of(stamp, stamp), SIM), "Duplicate resource");
+        assertInvalid(new BureaucracyConfig(offices,
+                List.of(new DocumentConfig("A", null)), List.of(new ResourceConfig("Stampila", 0)), SIM), "at least one permit");
     }
 
     @Test

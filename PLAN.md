@@ -53,15 +53,12 @@ No database: JSON config plus in-memory state. A database would hide the concurr
 | **F1** Data races | ✅ **done** | R1 (queue as an `ArrayList`, check-then-act), R2 (statistics lost updates), R3 (duplicate serial numbers), R6 (unsafe singleton). Tests prove each one. The shutdown hang is fixed (W7a): pills, then the stop flag, then interrupt, each with a timeout. |
 | **D** Deadlock | ❌ **not started** | |
 | **L** Livelock | ❌ **not started** | |
-| **P** Performance | ✅ **done** (needs 1 fix) | P1 (global lock, `GlobalLockSimulation` + `Benchmark`) and P2 (busy waiting + sleeping on a coffee break while holding the archive lock, in `faulty/locks/Counter`). **Fix:** `GlobalLockSimulation` now uses the `faulty/locks` classes, so the benchmark measures P1 + P2 mixed together. P1 must use the `correct/` classes. |
-| L2 Lost wakeup | ✅ **done** (W8) | The counter checks the break flag without the lock, has its coffee, then calls `wait()` with no loop and no timeout. A reopen signal sent during the coffee is lost, and the counter is "open" but asleep forever. The bugs are now selectable with `LockBug` (`BUSY_WAIT`, `BREAK_HOLDING_ARCHIVE`, `LOST_WAKEUP`), so P2 and L2 are shown separately. `LockDemonstrationTest` measures each real symptom against a control run. |
+| **P** Performance | ✅ **done** | P1 (global lock, `GlobalLockSimulation`, built on the `correct/` classes so it is measured alone) and P2 (busy waiting + the whole coffee break spent holding the archive lock). `LocksMain perf` measures them separately: P1 in wall-clock time (about 5×), P2 in CPU time (about 12×). |
+| L2 Lost wakeup | ✅ **done** (W8) | The counter checks the break flag without the lock, has its coffee, then calls `wait()` with no loop and no timeout. A reopen signal sent during the coffee is lost, and the counter is "open" but asleep forever. The bugs are now selectable with `LockBug` (`BUSY_WAIT`, `BREAK_HOLDING_ARCHIVE`, `LOST_WAKEUP`), so P2 and L2 are shown separately. `LockDemonstrationTest` measures each real symptom against a control run. `LocksMain lostwakeup` is a scripted step-by-step demo. In the full simulation, the "back from break" signal of a *later* break wakes the sleeping counter again: a later signal hides the lost one. That is why lost wakeups are intermittent and hard to catch, and it is worth saying at the oral exam. |
 
-### Still a stub (blocks running any full simulation)
+### Still to do
 
-- `correct/Client`: **nothing can run end to end without it.**
-- `correct/CoffeeBreakScheduler`.
-- The `Client` / `CoffeeBreakScheduler` copies in `faulty/races` and `faulty/locks`.
-- `LocksMain` modes `deadlock` and `livelock` (they print "not implemented").
+All three programs run end to end. The only missing pieces are the `LocksMain` modes `deadlock` (M3, W5) and `livelock` (M4, W6), which print "not implemented". The setting they need is ready: the `resources` / `uses` config (W3), `config/shared-resources.json`, and `LocksSimulation`, which runs the faulty-locks offices with any `LockBug` set.
 
 ---
 
@@ -181,19 +178,19 @@ Effort: **S** = a few hours, **M** = about a day, **L** = 2 days or more.
 
 | # | Work package | Owner | Depends on | Effort |
 |---|---|---|---|---|
-| **W1** | **`correct/Client`**: walk the plan; for each document, submit a `Request` with the documents held so far and wait on the future; one `recordWait` per document; `clientFinished()`; `countDown()` in `finally`; handle interruption on timeout. Plus a test with the real `Office`. **Unblocks every end-to-end run.** | *unassigned* | — | M |
-| **W2** | **C1 coffee breaks:** `CoffeeBreakScheduler` (scheduled ticks, scheduled reopen, ordered `stop()`); move the gate check before `take()`; "never fully closed" rule with `AtomicInteger.compareAndSet`; test "an office never had 0 open counters". | **M1** | W1 to run, not to write | M |
-| **W3** | **Shared resources config:** `resources` and `uses` in the model and JSON, validation in `ConfigLoader` (unknown resource, `permits < 1`), a config where two offices list `Stampila` / `Registru` in opposite orders. Needed by both W5 and W6, so M3 and M4 agree on it first. | *unassigned* | — | S |
+| **W1** | **`correct/Client`**: walk the plan; for each document, submit a `Request` with the documents held so far and wait on the future; one `recordWait` per document; `clientFinished()`; `countDown()` in `finally`; handle interruption on timeout. Plus a test with the real `Office`. **Unblocks every end-to-end run.** | **M1** ✅ | — | M |
+| **W2** | **C1 coffee breaks:** `CoffeeBreakScheduler` (scheduled ticks, scheduled reopen, ordered `stop()`); move the gate check before `take()`; "never fully closed" rule with `AtomicInteger.compareAndSet`; test "an office never had 0 open counters". | **M1** ✅ | W1 to run, not to write | M |
+| **W3** | **Shared resources config:** `resources` and `uses` in the model and JSON, validation in `ConfigLoader` (unknown resource, `permits < 1`), a config where two offices list `Stampila` / `Registru` in opposite orders. Needed by both W5 and W6, Done: `config/shared-resources.json`. | **M1** ✅ | — | S |
 | ~~W4~~ | ~~Correct `ResourcePool`~~: dropped (v2.1). | — | — | — |
 | **W5** | **D deadlock:** faulty `ResourcePool` with `ReentrantLock` in `uses` order; watchdog with `ThreadMXBean`; `LocksMain deadlock`; a test that shows the deadlock is detected. | **M3** | W3 | M |
 | **W6** | **L livelock:** polite `tryLock` with fixed back-off and handover; progress monitor; `LocksMain livelock`; a test that shows 0 progress while threads are `RUNNABLE`. | **M4** | W3 | M |
 | **W7a** | **Data-races fix:** `faulty/races/Office.shutdown` with stop + `join(timeout)` + interrupt, so a run with corrupted queues ends and reports instead of hanging. | **M1** | — | S |
-| **W7b** | **P1 isolation:** `GlobalLockSimulation` back on the `correct/` classes; `Benchmark` / `LocksMain perf` measure P1 and P2 separately. | *unassigned* (M1's code) | — | S |
+| **W7b** | **P1 isolation:** `GlobalLockSimulation` back on the `correct/` classes; `Benchmark` / `LocksMain perf` measure P1 and P2 separately. | **M1** ✅ | — | S |
 | **W8** | **L2 fix:** the break flag is checked outside the lock and `wait()` has no timeout, so a "reopen" signal sent in between is lost and the counter sleeps forever. Bugs selectable per mode, so P2 and L2 can be shown separately. Replace the test that always passes with ones that measure the real symptoms. | **M1** | — | S |
-| **W9** | **Faulty copies:** `Client` and `CoffeeBreakScheduler` in `faulty/races` and `faulty/locks` become copies of the correct ones, with no bugs of their own. | *unassigned* | W1, W2 | S |
-| **W10** | **End-to-end verification + docs:** stress-test the correct version (10 runs × 500 clients, all invariants OK); `RacesMain --runs 20` shows failures and never hangs; README with run commands; update the analogies tables. | *unassigned* | everything | M |
+| **W9** | **Faulty copies:** `Client` and `CoffeeBreakScheduler` in `faulty/races` and `faulty/locks` become copies of the correct ones, with no bugs of their own. | **M1** ✅ | W1, W2 | S |
+| **W10** | **End-to-end verification + docs:** stress-test the correct version (10 runs × 500 clients, all invariants OK); `RacesMain --runs 20` shows failures and never hangs; README with run commands; update the analogies tables. | **M1** ✅ | everything | M |
 
-**Critical path:** W1 → W9 → W10 for a runnable project. W3 → (W5, W6) for the deadlock/livelock story.
+**Remaining:** W5 (M3) and W6 (M4). Everything else is done.
 
 ---
 
@@ -201,7 +198,7 @@ Effort: **S** = a few hours, **M** = about a day, **L** = 2 days or more.
 
 | Member | Done |
 |---|---|
-| M1 (Madalina294) | Infrastructure (`common/`), `Simulation`/`CorrectMain`, R2, R6, P1 + `Benchmark`, configs, tests |
+| M1 (Madalina294) | Infrastructure (`common/`), `Simulation`/`CorrectMain`, R2, R6, P1 + `Benchmark`, configs, tests; C1 coffee breaks, `Client`, shared-resources config, races shutdown fix, L2 rework, P1 isolation, faulty copies, end-to-end tests, README |
 | M2 (Bogdanc2004) | `Office`, `Counter`, R1, R3, P2, L2 (to be fixed), tests |
 | M3 | — (next: W5 deadlock) |
 | M4 | — (next: W6 livelock) |
@@ -219,6 +216,7 @@ mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.races.RacesMain -Dexec
 mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="deadlock"
 mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="livelock"
 mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="perf"
+mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="lostwakeup"
 ```
 
 | Command | Expected |
@@ -227,4 +225,5 @@ mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec
 | `RacesMain --runs 20` | Most runs `FAILED` (lost counts, duplicate serials, double service, offices not found); never hangs |
 | `LocksMain deadlock` | Freezes; the watchdog prints the 2 counters and the locks each holds and waits for |
 | `LocksMain livelock` | Threads `RUNNABLE`, high CPU, 0 documents/second; the progress monitor reports a livelock; `findDeadlockedThreads()` finds nothing |
-| `LocksMain perf` | Correct vs P1 and correct vs P2, each measured separately, both clearly slower |
+| `LocksMain perf` | Correct vs P1 (wall-clock time, about 5×) and correct vs P2 (CPU time, about 12×), each measured separately |
+| `LocksMain lostwakeup` | With the bug: counter 1 is "open" but `WAITING` forever, 0 of 5 clients served. Without it: 5 of 5 |

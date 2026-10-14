@@ -10,6 +10,7 @@ import ro.cebp.bureaucracy.correct.Request;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 // FAULTY Office holding a plain unsynchronized ArrayList queue (BUG R1).
 public final class Office {
@@ -21,6 +22,7 @@ public final class Office {
     private final List<Request> queue = new ArrayList<>();
     private final List<Counter> counters;
     private final List<Thread> threads;
+    private final AtomicInteger openCounters;
 
     public Office(OfficeConfig config, SimulationConfig simulation, Statistics stats, IssuedLedger ledger) {
         this.config = config;
@@ -34,6 +36,7 @@ public final class Office {
         }
         this.counters = List.copyOf(counterList);
         this.threads = List.copyOf(threadList);
+        this.openCounters = new AtomicInteger(config.counters());
     }
 
     public String name() {
@@ -55,6 +58,30 @@ public final class Office {
     // BUG [R1]: Plain ArrayList add without synchronization can corrupt internal buffer or lose elements.
     public void submit(Request request) {
         queue.add(request);
+    }
+
+    // Coffee breaks: copied from correct.Office (not one of the bugs under study).
+    public boolean startBreak(Counter counter) {
+        while (true) {
+            int open = openCounters.get();
+            if (open <= 1) {
+                return false;
+            }
+            if (openCounters.compareAndSet(open, open - 1)) {
+                break;
+            }
+        }
+        if (!counter.goOnBreak()) {
+            openCounters.incrementAndGet();
+            return false;
+        }
+        return true;
+    }
+
+    public void endBreak(Counter counter) {
+        if (counter.returnFromBreak()) {
+            openCounters.incrementAndGet();
+        }
     }
 
     /**

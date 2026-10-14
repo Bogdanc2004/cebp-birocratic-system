@@ -1,0 +1,21 @@
+{
+  "offices": [
+    { "name": "Evidenta Populatiei", "counters": 3, "issues": ["CertificatNastere", "CarteIdentitate"] },
+    { "name": "Primarie",            "counters": 3, "issues": ["AdeverintaDomiciliu"] },
+    { "name": "ANAF",                "counters": 2, "issues": ["CertificatFiscal"] }
+  ],
+  "documents": [
+    { "name": "CertificatNastere",   "requires": [] },
+    { "name": "AdeverintaDomiciliu", "requires": ["CertificatNastere"] },
+    { "name": "CarteIdentitate",     "requires": ["CertificatNastere", "AdeverintaDomiciliu"] },
+    { "name": "CertificatFiscal",    "requires": ["CarteIdentitate"] }
+  ],
+  "simulation": {
+    "clients": 100,
+    "serviceTimeMs": { "min": 5, "max": 20 },
+    "coffeeBreakMs": { "min": 50, "max": 150 },
+    "coffeeBreakChance": 0.05,
+    "timeoutSeconds": 10,
+    "seed": null
+  }
+}
