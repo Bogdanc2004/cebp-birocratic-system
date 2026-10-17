@@ -16,5 +16,8 @@ public enum LockBug {
     LOST_WAKEUP,
 
     /** BUG [D]: acquire shared resources in each document's procedure order. */
-    DEADLOCK_ORDER
+    DEADLOCK_ORDER,
+
+    /** BUG [L]: counters politely release resources and retry together forever. */
+    POLITE_LIVELOCK
 }

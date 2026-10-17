@@ -34,6 +34,7 @@ public final class Office {
     private final List<Counter> counters;
     private final List<Thread> threads;
     private final AtomicInteger openCounters;
+    private final boolean interruptOnLivelockShutdown;
 
     public Office(OfficeConfig config, SimulationConfig simulation, Statistics stats, IssuedLedger ledger) {
         this(config, simulation, stats, ledger, DEFAULT_BUGS, ResourcePool.none());
@@ -56,12 +57,14 @@ public final class Office {
             Thread thread = new Thread(counter, config.name() + "-counter-" + i);
             // A deliberately deadlocked demonstration cannot release its resource locks;
             // daemon counters let the main run report the cycle and then exit cleanly.
-            thread.setDaemon(enabled.contains(LockBug.DEADLOCK_ORDER));
+            thread.setDaemon(enabled.contains(LockBug.DEADLOCK_ORDER)
+                    || enabled.contains(LockBug.POLITE_LIVELOCK));
             threadList.add(thread);
         }
         this.counters = List.copyOf(counterList);
         this.threads = List.copyOf(threadList);
         this.openCounters = new AtomicInteger(config.counters());
+        this.interruptOnLivelockShutdown = enabled.contains(LockBug.POLITE_LIVELOCK);
     }
 
     public String name() {
@@ -121,6 +124,11 @@ public final class Office {
         }
         for (Counter counter : counters) {
             counter.stop();
+        }
+        if (interruptOnLivelockShutdown) {
+            // The intentional livelock spins inside ResourcePool.acquire(), so it needs an
+            // interrupt immediately when the progress monitor ends the demonstration.
+            threads.forEach(Thread::interrupt);
         }
         for (Thread thread : threads) {
             thread.join(SHUTDOWN_GRACE_MS);

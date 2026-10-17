@@ -1,0 +1,110 @@
+﻿Command: mvn -q exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args=livelock
+
+16:11:06.506 [ro.cebp.bureaucracy.faulty.locks.LocksMain.main()] Running livelock demonstration with config/livelock.json
+16:11:06.510 [ro.cebp.bureaucracy.faulty.locks.LocksMain.main()] Walk-through: watch clients obtain their prerequisite first, then follow each resource counter through the five retry steps.
+16:11:06.738 [ro.cebp.bureaucracy.faulty.locks.LocksMain.main()] Opening 3 offices for 6 clients, bugs [POLITE_LIVELOCK]
+16:11:06.759 [client-0] Client 0 got CertificatNastere (#2) from Evidenta Populatiei after 13 ms
+16:11:06.770 [client-1] Client 1 got CertificatNastere (#1) from Evidenta Populatiei after 13 ms
+16:11:06.770 [client-1] Client 1 finished: CertificatNastere
+16:11:06.770 [client-0] Client 0 finished: CertificatNastere
+16:11:06.770 [client-2] Client 2 got CertificatNastere (#3) from Evidenta Populatiei after 23 ms
+16:11:06.770 [client-3] Client 3 got CertificatNastere (#4) from Evidenta Populatiei after 23 ms
+16:11:06.782 [client-4] Client 4 got CertificatNastere (#6) from Evidenta Populatiei after 34 ms
+16:11:06.782 [client-5] Client 5 got CertificatNastere (#5) from Evidenta Populatiei after 34 ms
+16:11:06.782 [Primarie-counter-1] [L round 1] STEP 1: holds Registru; next it will try for Stampila
+16:11:06.783 [ANAF-counter-1] [L round 1] STEP 1: holds Stampila; next it will try for Registru
+16:11:06.783 [ANAF-counter-1] [L round 1] STEP 2: tries for Registru while still holding Stampila
+16:11:06.783 [Primarie-counter-1] [L round 1] STEP 2: tries for Stampila while still holding Registru
+16:11:06.784 [ANAF-counter-1] [L round 1] STEP 3: Registru is held by the other counter; both counters now know the conflict
+16:11:06.784 [Primarie-counter-1] [L round 1] STEP 3: Stampila is held by the other counter; both counters now know the conflict
+16:11:06.784 [Primarie-counter-1] [L round 1] STEP 4: sees the other counter needs Registru; politely releases it
+16:11:06.784 [ANAF-counter-1] [L round 1] STEP 4: sees the other counter needs Stampila; politely releases it
+16:11:06.785 [Primarie-counter-1] [L round 1] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:06.785 [ANAF-counter-1] [L round 1] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:06.787 [Primarie-counter-1] [L round 2] STEP 1: holds Registru; next it will try for Stampila
+16:11:06.787 [ANAF-counter-1] [L round 2] STEP 1: holds Stampila; next it will try for Registru
+16:11:06.787 [ANAF-counter-1] [L round 2] STEP 2: tries for Registru while still holding Stampila
+16:11:06.787 [Primarie-counter-1] [L round 2] STEP 2: tries for Stampila while still holding Registru
+16:11:06.788 [ANAF-counter-1] [L round 2] STEP 3: Registru is held by the other counter; both counters now know the conflict
+16:11:06.788 [Primarie-counter-1] [L round 2] STEP 3: Stampila is held by the other counter; both counters now know the conflict
+16:11:06.788 [ANAF-counter-1] [L round 2] STEP 4: sees the other counter needs Stampila; politely releases it
+16:11:06.788 [Primarie-counter-1] [L round 2] STEP 4: sees the other counter needs Registru; politely releases it
+16:11:06.788 [ANAF-counter-1] [L round 2] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:06.788 [Primarie-counter-1] [L round 2] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:06.790 [ANAF-counter-1] [L round 3] STEP 1: holds Stampila; next it will try for Registru
+16:11:06.790 [Primarie-counter-1] [L round 3] STEP 1: holds Registru; next it will try for Stampila
+16:11:06.790 [ANAF-counter-1] [L round 3] STEP 2: tries for Registru while still holding Stampila
+16:11:06.790 [Primarie-counter-1] [L round 3] STEP 2: tries for Stampila while still holding Registru
+16:11:06.791 [ANAF-counter-1] [L round 3] STEP 3: Registru is held by the other counter; both counters now know the conflict
+16:11:06.791 [Primarie-counter-1] [L round 3] STEP 3: Stampila is held by the other counter; both counters now know the conflict
+16:11:06.791 [ANAF-counter-1] [L round 3] STEP 4: sees the other counter needs Stampila; politely releases it
+16:11:06.791 [Primarie-counter-1] [L round 3] STEP 4: sees the other counter needs Registru; politely releases it
+16:11:06.791 [ANAF-counter-1] [L round 3] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:06.791 [Primarie-counter-1] [L round 3] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:07.338 [ANAF-counter-1] [L round 500] STEP 1: holds Stampila; next it will try for Registru
+16:11:07.338 [Primarie-counter-1] [L round 500] STEP 1: holds Registru; next it will try for Stampila
+16:11:07.338 [Primarie-counter-1] [L round 500] STEP 2: tries for Stampila while still holding Registru
+16:11:07.338 [ANAF-counter-1] [L round 500] STEP 2: tries for Registru while still holding Stampila
+16:11:07.338 [ANAF-counter-1] [L round 500] STEP 3: Registru is held by the other counter; both counters now know the conflict
+16:11:07.338 [Primarie-counter-1] [L round 500] STEP 3: Stampila is held by the other counter; both counters now know the conflict
+16:11:07.339 [ANAF-counter-1] [L round 500] STEP 4: sees the other counter needs Stampila; politely releases it
+16:11:07.339 [Primarie-counter-1] [L round 500] STEP 4: sees the other counter needs Registru; politely releases it
+16:11:07.339 [Primarie-counter-1] [L round 500] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:07.339 [ANAF-counter-1] [L round 500] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:07.847 [Primarie-counter-1] [L round 1000] STEP 1: holds Registru; next it will try for Stampila
+16:11:07.847 [ANAF-counter-1] [L round 1000] STEP 1: holds Stampila; next it will try for Registru
+16:11:07.847 [Primarie-counter-1] [L round 1000] STEP 2: tries for Stampila while still holding Registru
+16:11:07.847 [ANAF-counter-1] [L round 1000] STEP 2: tries for Registru while still holding Stampila
+16:11:07.848 [ANAF-counter-1] [L round 1000] STEP 3: Registru is held by the other counter; both counters now know the conflict
+16:11:07.848 [Primarie-counter-1] [L round 1000] STEP 3: Stampila is held by the other counter; both counters now know the conflict
+16:11:07.848 [ANAF-counter-1] [L round 1000] STEP 4: sees the other counter needs Stampila; politely releases it
+16:11:07.848 [Primarie-counter-1] [L round 1000] STEP 4: sees the other counter needs Registru; politely releases it
+16:11:07.849 [Primarie-counter-1] [L round 1000] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:07.849 [ANAF-counter-1] [L round 1000] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:08.354 [Primarie-counter-1] [L round 1500] STEP 1: holds Registru; next it will try for Stampila
+16:11:08.354 [ANAF-counter-1] [L round 1500] STEP 1: holds Stampila; next it will try for Registru
+16:11:08.355 [Primarie-counter-1] [L round 1500] STEP 2: tries for Stampila while still holding Registru
+16:11:08.355 [ANAF-counter-1] [L round 1500] STEP 2: tries for Registru while still holding Stampila
+16:11:08.355 [Primarie-counter-1] [L round 1500] STEP 3: Stampila is held by the other counter; both counters now know the conflict
+16:11:08.355 [ANAF-counter-1] [L round 1500] STEP 3: Registru is held by the other counter; both counters now know the conflict
+16:11:08.355 [Primarie-counter-1] [L round 1500] STEP 4: sees the other counter needs Registru; politely releases it
+16:11:08.356 [ANAF-counter-1] [L round 1500] STEP 4: sees the other counter needs Stampila; politely releases it
+16:11:08.356 [ANAF-counter-1] [L round 1500] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:08.356 [Primarie-counter-1] [L round 1500] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:08.864 [ANAF-counter-1] [L round 2000] STEP 1: holds Stampila; next it will try for Registru
+16:11:08.864 [Primarie-counter-1] [L round 2000] STEP 1: holds Registru; next it will try for Stampila
+16:11:08.865 [ANAF-counter-1] [L round 2000] STEP 2: tries for Registru while still holding Stampila
+16:11:08.865 [Primarie-counter-1] [L round 2000] STEP 2: tries for Stampila while still holding Registru
+16:11:08.865 [ANAF-counter-1] [L round 2000] STEP 3: Registru is held by the other counter; both counters now know the conflict
+16:11:08.865 [Primarie-counter-1] [L round 2000] STEP 3: Stampila is held by the other counter; both counters now know the conflict
+16:11:08.866 [ANAF-counter-1] [L round 2000] STEP 4: sees the other counter needs Stampila; politely releases it
+16:11:08.866 [Primarie-counter-1] [L round 2000] STEP 4: sees the other counter needs Registru; politely releases it
+16:11:08.866 [Primarie-counter-1] [L round 2000] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:08.866 [ANAF-counter-1] [L round 2000] STEP 5: waits the same fixed 1 ms, then retries from STEP 1
+16:11:08.876 [ro.cebp.bureaucracy.faulty.locks.LocksMain.main()] LIVELOCK detected: no document issued for 2000 ms; 2008 polite retry cycles; resource counters remain RUNNABLE; no deadlock found
+16:11:08.876 [ro.cebp.bureaucracy.faulty.locks.LocksMain.main()] Stopping run (livelock detected): 4 clients still waiting, interrupting them
+16:11:08.877 [client-2] Client 2 gave up (interrupted)
+16:11:08.877 [client-4] Client 4 gave up (interrupted)
+16:11:08.877 [client-5] Client 5 gave up (interrupted)
+16:11:08.877 [client-3] Client 3 gave up (interrupted)
+16:11:08.878 [ro.cebp.bureaucracy.faulty.locks.LocksMain.main()] Coffee breaks over: 0 breaks taken
+16:11:08.878 [ro.cebp.bureaucracy.faulty.locks.LocksMain.main()] All offices closed
+
+========== LIVELOCK [L] DEMONSTRATION ==========
+Elapsed:            2140 ms
+Finished in time:   NO (timeout)
+Clients finished:   2
+Documents issued:   6
+  Evidenta Populatiei          6
+Average wait:       23.3 ms
+Maximum wait:       34 ms
+Invariants:         6 VIOLATED
+  - Issued documents: expected 10, actual 6
+  - Client 2 never received AdeverintaDomiciliu
+  - Client 3 never received CertificatFiscal
+  - Client 4 never received AdeverintaDomiciliu
+  - Client 5 never received AdeverintaDomiciliu
+  - Finished clients: expected 6, actual 2
+Status:             FAILED
+
+Exit code: 0

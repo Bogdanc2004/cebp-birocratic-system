@@ -28,7 +28,7 @@ No database: JSON config plus in-memory state. A database brings its own locking
 |---|---|---|---|
 | **Correct** | Queues, counters, clients, statistics, serial numbers, **C1 coffee breaks** | `correct.CorrectMain` | ✅ done |
 | **Faulty #1: Data races** | R1, R2, R3, R6: one data-consistency scenario | `faulty.races.RacesMain` | ✅ done |
-| **Faulty #2: Liveness & performance** | **P** performance (P1, P2) · **L2** lost wakeup · **D** deadlock · **L** livelock | `faulty.locks.LocksMain <perf\|lostwakeup\|deadlock\|livelock>` | 🟡 P, L2 and D done; L to do |
+| **Faulty #2: Liveness & performance** | **P** performance (P1, P2) · **L2** lost wakeup · **D** deadlock · **L** livelock | `faulty.locks.LocksMain <perf\|lostwakeup\|deadlock\|livelock>` | ✅ P, L2, D and L done |
 
 ### Decisions taken
 
@@ -37,7 +37,7 @@ No database: JSON config plus in-memory state. A database brings its own locking
 
 ### State today (branch `fix_problems`)
 
-- **48 tests pass** (`mvn test`).
+- **50 tests pass** (`mvn test`, including the M4 livelock symptom test).
 - All three programs run end to end.
 - Correct version, 200 clients: 743 documents issued, all invariants hold. Stress run with 500 clients: 1840 documents issued, all invariants hold.
 - `RacesMain --runs 5`: 5 / 5 runs corrupted, none hangs.
@@ -164,7 +164,7 @@ If the supervisor calls it back during the coffee, the `notifyAll()` reaches nob
 
 ### 5.3 Shared resources: the setting for D and L
 
-**Config (done):** see [config/shared-resources.json](RomBureaucraticSystem/src/main/resources/config/shared-resources.json).
+**Config (done):** deadlock uses [config/shared-resources.json](RomBureaucraticSystem/src/main/resources/config/shared-resources.json); the small, fixed-seed livelock walkthrough uses [config/livelock.json](RomBureaucraticSystem/src/main/resources/config/livelock.json).
 
 ```json
 "resources": [
@@ -208,13 +208,13 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 |---|
 | **The ANAF clerk holds the stamp and waits for the register. The Primărie clerk holds the register and waits for the stamp.** Both are patient and neither lets go. Every other clerk who needs either item joins the wait, and the citizens wait until closing time. |
 
-### 5.5 L: Livelock (to do, M4)
+### 5.5 L: Livelock (done, M4)
 
 **Bug:** counters use `tryLock()` and are **over-polite**:
 - if a counter gets the first resource but not the second, it releases the first and retries after the **same fixed delay** as everybody else;
 - and if it sees someone else waiting for a resource it holds, it **hands it over** first.
 
-**Symptom:** all threads are `RUNNABLE`, CPU is busy, and **0 documents** come out. Unlike the deadlock, `findDeadlockedThreads()` finds **nothing**. A progress monitor (no new document for N seconds) reports `LIVELOCK`.
+**Demo:** `LocksMain livelock` runs a six-client, fixed-seed scenario with no coffee breaks. It prints each step for the first three retry rounds and periodic retry counts after that. Opposing resource counters use `tryLock()` in procedure order, rendezvous, politely release the held resource, then retry after the same fixed spin back-off. The progress monitor reports `LIVELOCK` after 2 seconds without an issued document while the resource counters remain `RUNNABLE` and `findDeadlockedThreads()` returns `null`.
 
 **Fix:** random back-off (jitter), or simply the global acquisition order.
 
@@ -224,7 +224,7 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 
 ---
 
-## 6. What is left: guide for M3 (deadlock) and M4 (livelock)
+## 6. Implementation notes for M3 (deadlock) and M4 (livelock)
 
 ### What already exists and should be reused
 
@@ -232,9 +232,9 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 |---|---|---|
 | Resources in the config | `Bureaucracy.resources()`, `DocumentType.uses()`, `config/shared-resources.json` | Which resources exist, and which a document needs, in which order |
 | `LocksSimulation(bureaucracy, Set<LockBug>)` | `faulty/locks/LocksSimulation` | A full run with the faulty-locks offices. It returns a `SimulationResult` and a report, with a timeout |
-| `LockBug` | `faulty/locks/LockBug` | Add `DEADLOCK_ORDER` and `POLITE_LIVELOCK` values, so each mode switches on its own bug |
+| `LockBug` | `faulty/locks/LockBug` | `DEADLOCK_ORDER` and `POLITE_LIVELOCK` select each demonstration separately |
 | The place where a document is issued | `faulty/locks/Counter.serve(...)` | Acquire the resources of `request.wanted().uses()` around the "issue document" part |
-| `LocksMain` | modes `deadlock` and `livelock` | `deadlock` runs `config/shared-resources.json`; `livelock` remains for M4 |
+| `LocksMain` | modes `deadlock` and `livelock` | `deadlock` runs `config/shared-resources.json`; `livelock` runs `config/livelock.json` |
 
 ### Suggested steps (in this order, to avoid conflicts)
 
@@ -244,7 +244,7 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
    - pass it through the `Office` → `Counter` constructors, and call it in `Counter.serve`.
    - A no-op pool keeps the existing modes and tests unchanged. **Agree on this before splitting up**, because both of you touch the same three files.
 2. **M3: `DeadlockPool`.** One `ReentrantLock` per resource, `lock()` in `uses` order (BUG [D]). Add a watchdog daemon thread that calls `findDeadlockedThreads()` every second, prints the cycle (`ThreadInfo.getLockName()`, `getLockOwnerName()`) and ends the run. Then `LocksMain deadlock`, and a test: "a deadlock is detected within N seconds".
-3. **M4: `PoliteLivelockPool`.** `tryLock()` on each resource in `uses` order. On failure, release what is held and sleep a **fixed** delay; if another counter is waiting for a held resource, hand it over (BUG [L]). Then a progress monitor, `LocksMain livelock`, and a test: "0 documents in N seconds while threads are `RUNNABLE`, and `findDeadlockedThreads()` returns null".
+3. **M4: `PoliteLivelockPool` (done).** `tryLock()` on each resource in `uses` order. Opposing counters rendezvous, detect that another counter waits for a held resource, hand it over, then use the same fixed spin back-off (BUG [L]). The progress monitor, `LocksMain livelock`, and a focused symptom test are implemented.
 4. **Both:** add a row to the README results table, mark the work package ✅ below, and be ready to explain the **fix** (5.3) at the oral exam.
 
 ---
@@ -258,7 +258,7 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 | W3 | Shared resources in config + validation + `shared-resources.json` | M1 | ✅ |
 | ~~W4~~ | ~~Correct `ResourcePool`~~ (dropped, v2.1) | — | — |
 | **W5** | **D deadlock** (section 6, step 2) | **M3** | ✅ done |
-| **W6** | **L livelock** (section 6, step 3) | **M4** | ⏳ to do |
+| **W6** | **L livelock** (section 6, step 3) | **M4** | ✅ done |
 | W7a | Races shutdown never hangs | M1 | ✅ |
 | W7b | P1 isolated on the correct classes; `perf` measures P1 and P2 separately | M1 | ✅ |
 | W8 | L2 made real; bugs selectable with `LockBug`; real-symptom tests; `lostwakeup` demo | M1 | ✅ |
@@ -272,7 +272,7 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 | M1 (Madalina294) | Infrastructure (`common/`), `Simulation`/`CorrectMain`, `Client`, C1 coffee breaks, R2, R6, P1 + `Benchmark`, L2 rework, shared-resources config, races shutdown fix, faulty copies, configs, tests, README, plan |
 | M2 (Bogdanc2004) | `Office`, `Counter`, R1, R3, P2, first version of L2, tests |
 | M3 | W5 deadlock |
-| M4 | W6 livelock (to do) |
+| M4 | W6 livelock |
 
 ---
 

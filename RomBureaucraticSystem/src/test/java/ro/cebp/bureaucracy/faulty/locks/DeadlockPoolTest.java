@@ -16,14 +16,22 @@ class DeadlockPoolTest {
                 new ResourceConfig("Registru", 1), new ResourceConfig("Stampila", 1)))) {
             CountDownLatch eachHasFirstResource = new CountDownLatch(2);
             Thread primarie = Thread.ofPlatform().daemon().name("Primarie-counter-test").start(() -> {
-                pool.acquire(List.of("Registru"));
-                eachHasFirstResource.countDown();
-                awaitOtherThenAcquire(pool, eachHasFirstResource, List.of("Stampila"));
+                try {
+                    pool.acquire(List.of("Registru"));
+                    eachHasFirstResource.countDown();
+                    awaitOtherThenAcquire(pool, eachHasFirstResource, List.of("Stampila"));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             });
             Thread anaf = Thread.ofPlatform().daemon().name("ANAF-counter-test").start(() -> {
-                pool.acquire(List.of("Stampila"));
-                eachHasFirstResource.countDown();
-                awaitOtherThenAcquire(pool, eachHasFirstResource, List.of("Registru"));
+                try {
+                    pool.acquire(List.of("Stampila"));
+                    eachHasFirstResource.countDown();
+                    awaitOtherThenAcquire(pool, eachHasFirstResource, List.of("Registru"));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             });
 
             assertTrue(eachHasFirstResource.await(1, TimeUnit.SECONDS));

@@ -13,6 +13,8 @@ import ro.cebp.bureaucracy.common.model.DocumentType;
 import ro.cebp.bureaucracy.common.model.OfficeConfig;
 import ro.cebp.bureaucracy.common.model.SimulationConfig;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,6 +33,8 @@ import java.util.concurrent.TimeUnit;
  */
 public final class LocksSimulation {
 
+    private static final long LIVELOCK_NO_PROGRESS_MS = 2_000;
+
     private final Bureaucracy bureaucracy;
     private final Set<LockBug> bugs;
     private final Statistics stats = new ConcurrentStatistics();
@@ -45,7 +49,10 @@ public final class LocksSimulation {
         IssuedLedger ledger = new IssuedLedger();
         DeadlockPool deadlockPool = bugs.contains(LockBug.DEADLOCK_ORDER)
                 ? new DeadlockPool(bureaucracy.resources()) : null;
-        ResourcePool resourcePool = deadlockPool == null ? ResourcePool.none() : deadlockPool;
+        PoliteLivelockPool politeLivelockPool = bugs.contains(LockBug.POLITE_LIVELOCK)
+                ? new PoliteLivelockPool(bureaucracy.resources(), true) : null;
+        ResourcePool resourcePool = deadlockPool != null ? deadlockPool
+                : politeLivelockPool != null ? politeLivelockPool : ResourcePool.none();
 
         Map<String, Office> officeByName = new HashMap<>();
         List<Office> offices = new ArrayList<>();
@@ -67,6 +74,7 @@ public final class LocksSimulation {
         Log.info("Opening %d offices for %d clients, bugs %s", offices.size(), plans.size(), bugs);
         long start = System.nanoTime();
         boolean finishedInTime;
+        boolean livelockDetected = false;
         try {
             offices.forEach(Office::start);
             breaks.start();
@@ -77,17 +85,34 @@ public final class LocksSimulation {
                         clients.submit(new Client(id, plan, officeByDocument, stats, done)));
 
                 long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(sim.timeoutSeconds());
+                long lastProgress = System.nanoTime();
+                int lastIssuedCount = ledger.documents().size();
+                ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
                 boolean completed = false;
-                while (!completed && (deadlockPool == null || !deadlockPool.detected())) {
+                while (!completed && (deadlockPool == null || !deadlockPool.detected()) && !livelockDetected) {
                     long remaining = deadline - System.nanoTime();
                     if (remaining <= 0) break;
                     completed = done.await(Math.min(TimeUnit.NANOSECONDS.toMillis(remaining), 100),
                             TimeUnit.MILLISECONDS);
+                    if (politeLivelockPool != null) {
+                        int issuedCount = ledger.documents().size();
+                        if (issuedCount != lastIssuedCount) {
+                            lastIssuedCount = issuedCount;
+                            lastProgress = System.nanoTime();
+                        } else if (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lastProgress)
+                                >= LIVELOCK_NO_PROGRESS_MS
+                                && politeLivelockPool.hasRunnableCycle()
+                                && threadBean.findDeadlockedThreads() == null) {
+                            livelockDetected = true;
+                            Log.info("LIVELOCK detected: no document issued for %d ms; %d polite retry cycles; resource counters remain RUNNABLE; no deadlock found",
+                                    LIVELOCK_NO_PROGRESS_MS, politeLivelockPool.retryCycles());
+                        }
+                    }
                 }
                 finishedInTime = completed || done.getCount() == 0;
                 if (!finishedInTime) {
-                    String cause = deadlockPool != null && deadlockPool.detected()
-                            ? "deadlock detected" : "timeout after " + sim.timeoutSeconds() + " s";
+                    String cause = deadlockPool != null && deadlockPool.detected() ? "deadlock detected"
+                            : livelockDetected ? "livelock detected" : "timeout after " + sim.timeoutSeconds() + " s";
                     Log.info("Stopping run (%s): %d clients still waiting, interrupting them", cause, done.getCount());
                     clients.shutdownNow();
                 }

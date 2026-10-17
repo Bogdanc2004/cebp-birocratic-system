@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>BUG [P2] {@link LockBug#BUSY_WAIT}: spins while the queue is empty;</li>
  *   <li>BUG [P2] {@link LockBug#BREAK_HOLDING_ARCHIVE}: keeps the archive lock for the whole break;</li>
- *   <li>BUG [L2] {@link LockBug#LOST_WAKEUP}: can miss the "back from break" signal and sleep forever.</li>
+ *   <li>BUG [L2] {@link LockBug#LOST_WAKEUP}: can miss the "back from break" signal and sleep forever;</li>
+ *   <li>BUG [L] {@link LockBug#POLITE_LIVELOCK}: retries shared resources in sync forever.</li>
  * </ul>
  * With no bug enabled it behaves correctly.
  */
