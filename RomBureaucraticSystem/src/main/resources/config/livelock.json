@@ -1,0 +1,24 @@
+{
+  "resources": [
+    { "name": "Registru", "permits": 1 },
+    { "name": "Stampila", "permits": 1 }
+  ],
+  "offices": [
+    { "name": "Evidenta Populatiei", "counters": 2, "issues": ["CertificatNastere"] },
+    { "name": "Primarie",            "counters": 1, "issues": ["AdeverintaDomiciliu"] },
+    { "name": "ANAF",                "counters": 1, "issues": ["CertificatFiscal"] }
+  ],
+  "documents": [
+    { "name": "CertificatNastere",   "requires": [] },
+    { "name": "AdeverintaDomiciliu", "requires": ["CertificatNastere"], "uses": ["Registru", "Stampila"] },
+    { "name": "CertificatFiscal",    "requires": ["CertificatNastere"], "uses": ["Stampila", "Registru"] }
+  ],
+  "simulation": {
+    "clients": 6,
+    "serviceTimeMs": { "min": 10, "max": 10 },
+    "coffeeBreakMs": { "min": 100, "max": 100 },
+    "coffeeBreakChance": 0.0,
+    "timeoutSeconds": 10,
+    "seed": 3
+  }
+}

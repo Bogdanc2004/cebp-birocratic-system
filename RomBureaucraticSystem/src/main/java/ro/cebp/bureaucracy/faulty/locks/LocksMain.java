@@ -26,7 +26,7 @@ public final class LocksMain {
             case "perf" -> Benchmark.run(defaultConfig ? Benchmark.DEFAULT_CONFIG : cli.config());
             case "lostwakeup" -> lostWakeup();
             case "deadlock" -> deadlock(defaultConfig ? "config/shared-resources.json" : cli.config());
-            case "livelock" -> notYet("livelock (L)", "M4");
+            case "livelock" -> livelock(defaultConfig ? "config/livelock.json" : cli.config());
             default -> {
                 System.err.println("Usage: LocksMain <deadlock|livelock|perf|lostwakeup> [--config <path>] [--quiet]");
                 System.exit(2);
@@ -47,8 +47,12 @@ public final class LocksMain {
         Report.print("DEADLOCK [D] DEMONSTRATION", result);
     }
 
-    private static void notYet(String scenario, String owner) {
-        System.err.println("Scenario " + scenario + " is not implemented yet (owner: " + owner + ")");
-        System.exit(2);
+    private static void livelock(String config) throws InterruptedException {
+        Log.info("Running livelock demonstration with %s", config);
+        Log.info("Walk-through: watch clients obtain their prerequisite first, then follow each resource counter through the five retry steps.");
+        SimulationResult result = new LocksSimulation(ConfigLoader.load(config),
+                EnumSet.of(LockBug.POLITE_LIVELOCK)).run();
+        Report.print("LIVELOCK [L] DEMONSTRATION", result);
     }
+
 }
