@@ -43,11 +43,14 @@ public final class LocksSimulation {
     public SimulationResult run() throws InterruptedException {
         SimulationConfig sim = bureaucracy.simulation();
         IssuedLedger ledger = new IssuedLedger();
+        DeadlockPool deadlockPool = bugs.contains(LockBug.DEADLOCK_ORDER)
+                ? new DeadlockPool(bureaucracy.resources()) : null;
+        ResourcePool resourcePool = deadlockPool == null ? ResourcePool.none() : deadlockPool;
 
         Map<String, Office> officeByName = new HashMap<>();
         List<Office> offices = new ArrayList<>();
         for (OfficeConfig config : bureaucracy.offices()) {
-            Office office = new Office(config, sim, stats, ledger, bugs);
+            Office office = new Office(config, sim, stats, ledger, bugs, resourcePool);
             officeByName.put(config.name(), office);
             offices.add(office);
         }
@@ -73,10 +76,19 @@ public final class LocksSimulation {
                 plans.forEach((id, plan) ->
                         clients.submit(new Client(id, plan, officeByDocument, stats, done)));
 
-                finishedInTime = done.await(sim.timeoutSeconds(), TimeUnit.SECONDS);
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(sim.timeoutSeconds());
+                boolean completed = false;
+                while (!completed && (deadlockPool == null || !deadlockPool.detected())) {
+                    long remaining = deadline - System.nanoTime();
+                    if (remaining <= 0) break;
+                    completed = done.await(Math.min(TimeUnit.NANOSECONDS.toMillis(remaining), 100),
+                            TimeUnit.MILLISECONDS);
+                }
+                finishedInTime = completed || done.getCount() == 0;
                 if (!finishedInTime) {
-                    Log.info("TIMEOUT after %d s: %d clients still waiting, interrupting them",
-                            sim.timeoutSeconds(), done.getCount());
+                    String cause = deadlockPool != null && deadlockPool.detected()
+                            ? "deadlock detected" : "timeout after " + sim.timeoutSeconds() + " s";
+                    Log.info("Stopping run (%s): %d clients still waiting, interrupting them", cause, done.getCount());
                     clients.shutdownNow();
                 }
             }
@@ -85,6 +97,7 @@ public final class LocksSimulation {
             for (Office office : offices) {
                 office.shutdown();
             }
+            if (deadlockPool != null) deadlockPool.close();
         }
         Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
         Log.info("All offices closed");

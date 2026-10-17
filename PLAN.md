@@ -28,7 +28,7 @@ No database: JSON config plus in-memory state. A database brings its own locking
 |---|---|---|---|
 | **Correct** | Queues, counters, clients, statistics, serial numbers, **C1 coffee breaks** | `correct.CorrectMain` | ✅ done |
 | **Faulty #1: Data races** | R1, R2, R3, R6: one data-consistency scenario | `faulty.races.RacesMain` | ✅ done |
-| **Faulty #2: Liveness & performance** | **P** performance (P1, P2) · **L2** lost wakeup · **D** deadlock · **L** livelock | `faulty.locks.LocksMain <perf\|lostwakeup\|deadlock\|livelock>` | 🟡 P and L2 done; D and L to do |
+| **Faulty #2: Liveness & performance** | **P** performance (P1, P2) · **L2** lost wakeup · **D** deadlock · **L** livelock | `faulty.locks.LocksMain <perf\|lostwakeup\|deadlock\|livelock>` | 🟡 P, L2 and D done; L to do |
 
 ### Decisions taken
 
@@ -234,7 +234,7 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 | `LocksSimulation(bureaucracy, Set<LockBug>)` | `faulty/locks/LocksSimulation` | A full run with the faulty-locks offices. It returns a `SimulationResult` and a report, with a timeout |
 | `LockBug` | `faulty/locks/LockBug` | Add `DEADLOCK_ORDER` and `POLITE_LIVELOCK` values, so each mode switches on its own bug |
 | The place where a document is issued | `faulty/locks/Counter.serve(...)` | Acquire the resources of `request.wanted().uses()` around the "issue document" part |
-| `LocksMain` | modes `deadlock` and `livelock` | Today they print "not implemented". Replace them with a run on `config/shared-resources.json` |
+| `LocksMain` | modes `deadlock` and `livelock` | `deadlock` runs `config/shared-resources.json`; `livelock` remains for M4 |
 
 ### Suggested steps (in this order, to avoid conflicts)
 
@@ -257,7 +257,7 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 | W2 | C1 coffee breaks: scheduler, gate before `take()`, never fully closed, invariant, tests | M1 | ✅ |
 | W3 | Shared resources in config + validation + `shared-resources.json` | M1 | ✅ |
 | ~~W4~~ | ~~Correct `ResourcePool`~~ (dropped, v2.1) | — | — |
-| **W5** | **D deadlock** (section 6, step 2) | **M3** | ⏳ to do |
+| **W5** | **D deadlock** (section 6, step 2) | **M3** | ✅ done |
 | **W6** | **L livelock** (section 6, step 3) | **M4** | ⏳ to do |
 | W7a | Races shutdown never hangs | M1 | ✅ |
 | W7b | P1 isolated on the correct classes; `perf` measures P1 and P2 separately | M1 | ✅ |
@@ -271,7 +271,7 @@ With a global order, no cycle "I hold X and wait for Y" can form, so a deadlock 
 |---|---|
 | M1 (Madalina294) | Infrastructure (`common/`), `Simulation`/`CorrectMain`, `Client`, C1 coffee breaks, R2, R6, P1 + `Benchmark`, L2 rework, shared-resources config, races shutdown fix, faulty copies, configs, tests, README, plan |
 | M2 (Bogdanc2004) | `Office`, `Counter`, R1, R3, P2, first version of L2, tests |
-| M3 | W5 deadlock (to do) |
+| M3 | W5 deadlock |
 | M4 | W6 livelock (to do) |
 
 ---
