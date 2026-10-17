@@ -13,5 +13,8 @@ public enum LockBug {
     BREAK_HOLDING_ARCHIVE,
 
     /** BUG [L2]: the "back from break" signal can arrive before the counter waits for it, and is lost. */
-    LOST_WAKEUP
+    LOST_WAKEUP,
+
+    /** BUG [D]: acquire shared resources in each document's procedure order. */
+    DEADLOCK_ORDER
 }

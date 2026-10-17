@@ -36,7 +36,7 @@ mvn exec:java -Dexec.args="--config config/small.json"                     # cor
 mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.races.RacesMain -Dexec.args="--runs 20"
 mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="perf"
 mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="lostwakeup"
-mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="deadlock"    # M3, not yet
+mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="deadlock"    # M3 deadlock demo
 mvn exec:java -Dexec.mainClass=ro.cebp.bureaucracy.faulty.locks.LocksMain -Dexec.args="livelock"    # M4, not yet
 ```
 
@@ -52,6 +52,7 @@ From one machine with 16 cores; your numbers will differ.
 | `RacesMain --runs 5` | `Runs with broken invariants: 5 / 5` (160–280 violations per run) |
 | `LocksMain perf` | P1: 4.9× the wall-clock time of the correct version. P2: 12× the CPU time |
 | `LocksMain lostwakeup` | With the bug, counter 1 is "open" but `WAITING` forever: 0 of 5 clients served. Without it: 5 of 5 |
+| `LocksMain deadlock` | `DEADLOCK detected` prints the locked/waiting resources and counter owners; the simulation times out and shuts down |
 
 ## Configuration
 

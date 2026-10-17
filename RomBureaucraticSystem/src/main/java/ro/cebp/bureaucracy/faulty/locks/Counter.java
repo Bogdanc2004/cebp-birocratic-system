@@ -38,6 +38,7 @@ public final class Counter implements Runnable {
     private final Statistics stats;
     private final IssuedLedger ledger;
     private final Set<LockBug> bugs;
+    private final ResourcePool resourcePool;
 
     private final AtomicBoolean onBreak = new AtomicBoolean(false);
     private final Object pauseLock = new Object();
@@ -50,7 +51,8 @@ public final class Counter implements Runnable {
             SimulationConfig simulation,
             Statistics stats,
             IssuedLedger ledger,
-            Set<LockBug> bugs) {
+            Set<LockBug> bugs,
+            ResourcePool resourcePool) {
         this.id = id;
         this.officeName = officeName;
         this.queue = queue;
@@ -59,6 +61,7 @@ public final class Counter implements Runnable {
         this.stats = stats;
         this.ledger = ledger;
         this.bugs = bugs;
+        this.resourcePool = resourcePool;
     }
 
     public int id() {
@@ -197,14 +200,19 @@ public final class Counter implements Runnable {
             }
         }
 
-        Document doc;
-        // Short critical section: filing the document in the office archive.
-        synchronized (archiveLock) {
-            long serial = SERIAL_GENERATOR.getAndIncrement();
-            doc = new Document(wanted, request.clientId(), serial);
-            ledger.record(doc);
-            stats.recordIssued(officeName);
+        resourcePool.acquire(wanted.uses());
+        try {
+            Document doc;
+            // Short critical section: filing the document in the office archive.
+            synchronized (archiveLock) {
+                long serial = SERIAL_GENERATOR.getAndIncrement();
+                doc = new Document(wanted, request.clientId(), serial);
+                ledger.record(doc);
+                stats.recordIssued(officeName);
+            }
+            request.result().complete(doc);
+        } finally {
+            resourcePool.release(wanted.uses());
         }
-        request.result().complete(doc);
     }
 }

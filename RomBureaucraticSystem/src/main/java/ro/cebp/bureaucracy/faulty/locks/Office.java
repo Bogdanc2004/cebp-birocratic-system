@@ -36,19 +36,27 @@ public final class Office {
     private final AtomicInteger openCounters;
 
     public Office(OfficeConfig config, SimulationConfig simulation, Statistics stats, IssuedLedger ledger) {
-        this(config, simulation, stats, ledger, DEFAULT_BUGS);
+        this(config, simulation, stats, ledger, DEFAULT_BUGS, ResourcePool.none());
     }
 
     public Office(OfficeConfig config, SimulationConfig simulation, Statistics stats, IssuedLedger ledger,
                   Set<LockBug> bugs) {
+        this(config, simulation, stats, ledger, bugs, ResourcePool.none());
+    }
+
+    public Office(OfficeConfig config, SimulationConfig simulation, Statistics stats, IssuedLedger ledger,
+                  Set<LockBug> bugs, ResourcePool resourcePool) {
         this.config = config;
         Set<LockBug> enabled = bugs.isEmpty() ? EnumSet.noneOf(LockBug.class) : EnumSet.copyOf(bugs);
         List<Counter> counterList = new ArrayList<>();
         List<Thread> threadList = new ArrayList<>();
         for (int i = 1; i <= config.counters(); i++) {
-            Counter counter = new Counter(i, config.name(), queue, archiveLock, simulation, stats, ledger, enabled);
+            Counter counter = new Counter(i, config.name(), queue, archiveLock, simulation, stats, ledger, enabled, resourcePool);
             counterList.add(counter);
             Thread thread = new Thread(counter, config.name() + "-counter-" + i);
+            // A deliberately deadlocked demonstration cannot release its resource locks;
+            // daemon counters let the main run report the cycle and then exit cleanly.
+            thread.setDaemon(enabled.contains(LockBug.DEADLOCK_ORDER));
             threadList.add(thread);
         }
         this.counters = List.copyOf(counterList);
