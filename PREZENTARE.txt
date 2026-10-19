@@ -1,0 +1,135 @@
+BUREAUCRACY MANAGER - PREZENTARE SCURTĂ
+=======================================
+
+Echipa: Puican Madalina-Maria, Comsa Bogdan-Gabriel, Jurca Alexandra-Cristina, Cercel Stefania-Bianca
+
+Tema: o instituție cu birouri (Evidența Populației, Primărie, ANAF...). Fiecare birou are
+o coadă și unul sau mai multe ghișee. Actele depind de alte acte (pentru buletin îți trebuie
+certificatul de naștere și adeverința de domiciliu). Ghișeele pleacă la cafea.
+
+Threads:
+  - cetățean  = virtual thread (Client)
+  - ghișeu    = thread de platformă (Counter)
+  - șef de tură (pauzele de cafea) = ScheduledExecutorService
+Config: fișiere JSON (fără bază de date: aceasta ar ascunde problemele de concurență).
+La final, InvariantChecker verifică dacă datele sunt corecte (același verificator în toate versiunile).
+
+
+-------------------------------------------------------------------------------
+1. VERSIUNEA CORECTĂ  (correct.CorrectMain)
+-------------------------------------------------------------------------------
+
+Viața reală                                  -> Ce am folosit în cod
+-------------------------------------------------------------------------------
+Aparat de bonuri: un singur funcționar        -> LinkedBlockingDeque: put() / take(),
+strigă fiecare număr                             verifică și scoate într-un pas atomic
+
+Bon de ridicare: ești strigat când actul       -> CompletableFuture: complete() -> get()
+e gata, niciodată pe jumătate                    (happens-before), Document imutabil
+
+Cetățeanul își ține dosarul, dă copii          -> thread confinement + List.copyOf()
+
+Ștampila de numerotare care avansează singură  -> AtomicLong.getAndIncrement()
+
+Fiecare funcționar bifează pe foaia lui,       -> ConcurrentHashMap + LongAdder,
+șeful adună seara                                LongAccumulator(Math::max)
+
+Regulamentul de pe perete: îl citesc toți,     -> obiecte imutabile, construite
+nimeni nu-l schimbă                              înainte de pornirea thread-urilor
+
+COFFEE BREAK (cazul principal):
+  "Rămâne mereu cel puțin un ghișeu deschis"   -> AtomicInteger.compareAndSet (CAS)
+  Termini cu omul de la geam, apoi pleci       -> verificare înainte de take();
+                                                  clientul e pus înapoi în față (putFirst)
+  "Am revenit!" anunțat în toată sala;         -> synchronized + while(onBreak) wait()
+  te mai uiți o dată la tabelă                    + notifyAll(), sub același lacăt
+  Șeful îi cheamă pe toți înapoi înainte       -> scheduler oprit înaintea birourilor
+  de închidere
+
+Închiderea clădirii: portarul numără           -> CountDownLatch (countDown în finally,
+cine a rămas, apoi biletul "sfârșit de tură"     await cu timeout) + poison pill + join()
+
+DE CE E CORECT:
+  - Fără data races: fiecare dată comună e protejată (atomic, colecție concurentă,
+    lacăt) sau nu e partajată deloc.
+  - Fără deadlock: nimeni nu ține un lacăt în timp ce cere altul (nu există hold and wait).
+  - Fără livelock: așteptările sunt blocante (take, get, wait); CAS-ul garantează progresul.
+Rezultat: 200 / 500 de clienți, toate invariantele respectate.
+
+
+-------------------------------------------------------------------------------
+2. FAULTY #1 - DATA RACES / CONSISTENȚA DATELOR  (faulty.races.RacesMain --runs 20)
+-------------------------------------------------------------------------------
+Aceeași instituție, dar fără protecții. Pauze artificiale (paperwork) lărgesc fereastra
+de race ca bug-urile să apară la fiecare rulare.
+
+R1  Coadă pe o foaie de hârtie: doi funcționari  -> ArrayList + if(!isEmpty()) remove(0)
+    strigă același om / un nume se pierde           (check-then-act)
+    => client servit de 2 ori, clienți pierduți, IndexOutOfBounds
+
+R2  O singură foaie de statistici pe perete:      -> HashMap + get() apoi put(+1)
+    ambii citesc 57, ambii scriu 58                  (read-modify-write)
+    => lost updates: statisticile < actele emise
+
+R3  Caiet comun cu ultimul număr de serie         -> static long nextSerial; x++ fără protecție
+    => două buletine cu același număr
+
+R6  Doi manageri tipăresc fiecare "registrul      -> singleton lazy: if (instance == null)
+    unic"; pe hol lipsește ANAF                      instance = new ...  (nici volatile, nici sync)
+    => birouri negăsite, clienții eșuează
+
+Rezultat: 3/3 (sau 20/20) rulări cu sute de erori, diferite de la o rulare la alta
+(semnătura unui race condition). Programul se termină mereu (shutdown cu timeout).
+Corect ar fi: BlockingQueue, LongAdder, AtomicLong, inițializare înainte de start.
+
+
+-------------------------------------------------------------------------------
+3. FAULTY #2 - DEADLOCK, LIVELOCK, PERFORMANȚĂ  (faulty.locks.LocksMain <mod>)
+-------------------------------------------------------------------------------
+Contextul: instituția are O ștampilă și UN registru, comune tuturor birourilor.
+Primăria cere  Registru -> Ștampilă;  ANAF cere  Ștampilă -> Registru  (ordine inversă).
+
+DEADLOCK  (mod: deadlock)
+  Viața reală: Primăria ține registrul și așteaptă ștampila; ANAF ține ștampila și
+               așteaptă registrul. Niciunul nu cedează.
+  Cod:  ReentrantLock pentru fiecare resursă, lock() în ordinea din procedură (bug-ul);
+        un CountDownLatch forțează ca amândoi să-și ia prima resursă înainte de a doua.
+        Watchdog: ThreadMXBean.findDeadlockedThreads() găsește și afișează ciclul.
+  Simptom: totul îngheață, thread-uri BLOCKED, CPU ~0.
+  Corect: ordine globală de luare (întâi Registru, apoi Ștampilă) sau tryLock(timeout).
+
+LIVELOCK  (mod: livelock)
+  Viața reală: doi funcționari prea politicoși: "Luați dumneavoastră!" - "Nu, după
+               dumneavoastră!" - lasă amândoi jos, întind amândoi mâna, iar lasă jos...
+  Cod:  tryLock() pe resurse; dacă celălalt o așteaptă pe a ta, o cedezi (unlock);
+        aceeași pauză fixă de 1 ms pentru amândoi; o barieră (rendezvous) îi ține în pas.
+        Monitor de progres: 0 acte în 2 s + thread-uri RUNNABLE + niciun deadlock găsit.
+  Simptom: ~2000 de încercări în 2 s, zero acte, CPU ocupat.
+  Corect: pauză aleatoare (jitter) sau aceeași ordine globală.
+
+PERFORMANȚĂ  (mod: perf)
+  P1  O singură persoană în clădire odată       -> un synchronized global în jurul
+                                                    întregii vizite a clientului
+      => rezultat corect, dar ~5x mai lent
+  P2  Funcționarul care se uită la fiecare       -> busy waiting (while(queue.isEmpty()))
+      secundă în sala goală; altul pleacă           + pauza de cafea ținând lacătul arhivei
+      la cafea cu cheia arhivei
+      => ~9-12x mai mult CPU, celelalte ghișee blocate
+
+LOST WAKEUP (în plus, mod: lostwakeup)
+  Viața reală: funcționarul e chemat înapoi cât timp e în bucătărie, nu aude, apoi
+               așteaptă în camera de pauză un apel care a avut deja loc.
+  Cod:  verifică flag-ul fără lacăt, apoi wait() fără while și fără timeout.
+  Simptom: ghișeu "deschis" pe tabelă, dar adormit pentru totdeauna: 0 din 5 clienți serviți.
+  Corect: synchronized + while(condiție) wait(), ca în versiunea corectă.
+
+
+-------------------------------------------------------------------------------
+DE REȚINUT
+-------------------------------------------------------------------------------
+- Data races vin din operații care par un pas, dar sunt mai mulți
+  (x++, "verific apoi iau", "dacă nu există, creez"). Soluție: atomicitate sau nepartajare.
+- Deadlock = aștept la nesfârșit; livelock = cedez la nesfârșit. Ambele vin din ordinea
+  inversă de luare a resurselor; soluția comună este ordinea globală.
+- Latch-ul și bariera din demo-uri nu sunt bug-ul: doar fac sincronizarea nefericită
+  sigură, ca să se vadă la fiecare rulare.
